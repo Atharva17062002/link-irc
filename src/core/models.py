@@ -1,6 +1,5 @@
 from pydantic import BaseModel
 from pymongo import MongoClient
-from dotenv import load_dotenv
 import os
 
 USERNAME = os.getenv("mongo_username")
@@ -11,9 +10,16 @@ client = MongoClient(
     f"mongodb+srv://{USERNAME}:{PASSWORD}@maindb.ennpbrl.mongodb.net/?retryWrites=true&w=majority&appName=MainDB"
 )
 db = client["link_irc"]
-collection = db["sessions"]
+sessions_db = db["sessions"]
+users_db = db["users"]
+messages_db = db["messages"]
 
 
 class Session(BaseModel):
     sessionid: int
+    password: str
+
+
+class User(BaseModel):
+    username: str
     password: str
