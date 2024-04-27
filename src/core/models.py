@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from typing import Optional
 from pymongo import MongoClient
 import os
 
@@ -18,6 +19,7 @@ messages_db = db["messages"]
 class Session(BaseModel):
     sessionid: int
     password: str
+    created_by: Optional[str] = None
 
 
 class User(BaseModel):
