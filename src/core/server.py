@@ -41,37 +41,25 @@ async def create_session(session: Session):
     sessions_db.insert_one(session_dict)
     return json_util.dumps(session_dict)
 
-@app.post('/send-message')
-async def send_message(message: Message, session_id: str, password:str):
-    message_dict = dict(message)
-    # Find the session by session_id
-    session = sessions_db.find_one({"sessionid": session_id,"password":password})
-    if session is None:
-        raise HTTPException(status_code=404, detail="Session not found")
-    
-    # Append the new message to the session's messages list
-    if 'messages' in session:
-        session['messages'].append(message_dict)
+def get_session(session_id: int):
+    session = sessions_db.find_one({"sessionid": session_id})
+    if session:
+        return Session(**session)
     else:
-        session['messages'] = [message_dict]
-    
-    # Update the session document in the database
-    sessions_db.update_one({"sessionid": session_id}, {"$set": {"messages": session['messages']}})
-    
-    return JSONResponse(content=message_dict, media_type="application/json")
-
-
-@app.get('/get-all-messages')
-async def get_all_messages(session_id: str, user_id: str, password:str):
-    # Find the session by session_id
-    session = sessions_db.find_one({"sessionid": session_id,"password": password})
-    if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    if user_id == session['adminid'] or user_id == session['memberid']:
-        return JSONResponse(content=session['messages'], media_type="application/json")
-    else:
-        raise HTTPException(status_code=403, detail="User not authorized to view messages")
+@app.post("/send-message/{session_id}")
+async def send_message(session_id: int, message: Message):
+    session = get_session(session_id)
+    session.messages.append(message)
+    # Save the updated session back to the database
+    sessions_db.update_one({"sessionid": session_id}, {"$set": session.dict()})
+    return {"message": "Message sent successfully"}
+
+@app.get("/get-all-messages/{session_id}")
+async def get_all_messages(session_id: int):
+    session = get_session(session_id)
+    return session.messages
 
 
 # @app.post("/auth-session")

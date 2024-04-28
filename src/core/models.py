@@ -2,13 +2,14 @@ from pydantic import BaseModel
 from pymongo import MongoClient
 import os
 from datetime import datetime
+from typing import List
 
 USERNAME = os.getenv("mongo_username")
 PASSWORD = os.getenv("mongo_password")
 
 
 client = MongoClient(
-    f"mongodb+srv://manuloco:manuloco123@maindb.ennpbrl.mongodb.net/?retryWrites=true&w=majority&appName=MainDB"
+    f"mongodb+srv://{USERNAME}:{PASSWORD}@maindb.ennpbrl.mongodb.net/?retryWrites=true&w=majority&appName=MainDB"
 )
 db = client["link_irc"]
 sessions_db = db["sessions"]
@@ -18,13 +19,13 @@ messages_db = db["messages"]
 class Message(BaseModel):
     content: str
     userid: str
-    createdat: datetime
+    createdat: str
 
 class Session(BaseModel):
     sessionid: int
     adminid: str
     memberid: str
-    messages: [Message]
+    messages: List[Message] = []
     password: str
 
 class User(BaseModel):
