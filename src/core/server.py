@@ -18,7 +18,7 @@ async def auth_user(user: User):
     print(cursor)
     if cursor is None:
         raise HTTPException(status_code=404, detail="User not found")
-    return json_util.dumps(cursor)
+    return json_util.dumps(cursor, default=json_util.default)
 
 
 @app.post("/create-user")
@@ -28,14 +28,13 @@ async def create_user(user: User):
     if cursor is not None:
         raise HTTPException(status_code=400, detail="User already exists")
     users_db.insert_one(user_dict)
-    return JSONResponse(content=user_dict, media_type="application/json")
+    print(type(user_dict))
+    return {"message": "User created successfully", "user": user_dict, "status": 200}
 
 
-@app.post("/create-session/{user_id}")
-async def create_session(user_id: str, session: Session):
+@app.post("/create-session")
+async def create_session(session: Session):
     session_dict = dict(session)
-
-    session_dict["created_by"] = user_id
 
     print(session_dict)
     # only create session if it does not exist
@@ -44,7 +43,8 @@ async def create_session(user_id: str, session: Session):
         raise HTTPException(status_code=400, detail="Session already exists")
 
     sessions_db.insert_one(session_dict)
-    return json_util.dumps(session_dict)
+    return json_util.dumps(session_dict, default=json_util.default)
+
 
 def get_session(session_id: int):
     session = sessions_db.find_one({"sessionid": session_id})
@@ -53,13 +53,16 @@ def get_session(session_id: int):
     else:
         raise HTTPException(status_code=404, detail="Session not found")
 
+
 @app.post("/send-message/{session_id}")
 async def send_message(session_id: int, message: Message):
+    print(message)
     session = get_session(session_id)
     session.messages.append(message)
     # Save the updated session back to the database
     sessions_db.update_one({"sessionid": session_id}, {"$set": session.dict()})
     return {"message": "Message sent successfully"}
+
 
 @app.get("/get-all-messages/{session_id}")
 async def get_all_messages(session_id: int):
@@ -67,13 +70,14 @@ async def get_all_messages(session_id: int):
     return session.messages
 
 
-# @app.post("/auth-session")
-# async def auth_session(session: Session):
-#     session_dict = dict(session)
-#     cursor = sessions_db.find_one(session_dict)
-#     if cursor is None:
-#         raise HTTPException(status_code=404, detail="Session not found")
-#     return json_util.dumps(cursor)
+@app.post("/auth-session/{session_id}/{user_id}")
+async def auth_session(session_id: int, user_id: str):
+
+    session = get_session(session_id)
+    if session.memberid == user_id or session.adminid == user_id:
+        return {"message": "User authenticated successfully"}
+    else:
+        raise HTTPException(status_code=401, detail="User not authenticated")
 
 
 # @app.websocket("/ws")
