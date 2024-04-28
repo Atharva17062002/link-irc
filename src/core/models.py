@@ -9,7 +9,7 @@ PASSWORD = os.getenv("mongo_password")
 
 
 client = MongoClient(
-    f"mongodb+srv://{USERNAME}:{PASSWORD}@maindb.ennpbrl.mongodb.net/?retryWrites=true&w=majority&appName=MainDB"
+    f"mongodb+srv://link-irc:link123@maindb.ennpbrl.mongodb.net/?retryWrites=true&w=majority&appName=MainDB"
 )
 db = client["link_irc"]
 sessions_db = db["sessions"]
