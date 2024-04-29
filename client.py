@@ -1,6 +1,8 @@
 import asyncio
 import requests as http
 import json
+import threading
+from time import sleep
 
 # Constants
 BASE_URL = "http://localhost:8000"
@@ -50,8 +52,8 @@ async def register():
 
 async def login():
     global LOGGED_IN_USER
-    username = "manu"
-    password = "1234"
+    username = input("Enter username: ")
+    password = input("Enter password: ")
 
     try:
         response = http.post(
@@ -100,29 +102,41 @@ async def create_session():
         data = json.loads(response.json())
         session_id = data.get("sessionid", None)
         print(f"Session created with id: {session_id}")
+        # run the fetch_messages coroutine in the background
+        asyncio.create_task(fetch_messages(session_id))
         await send_message(session_id)  # Go to send message
+
     except Exception as e:
         print(e)
 
 
 async def send_message(session_id):
+    threading.Thread(target=fetch_messages).start()
 
     while True:
-        response = http.get(f"{BASE_URL}/get-all-messages/{session_id}")
-        data = response.json()
-        for message in data:
-            content = message.get("content")
-            userid = message.get("userid")
-            print(f"{userid}: {content}")
-
+        # Handle user input (send a new message)
         message = input("Enter message: ")
         try:
             response = http.post(
                 f"{BASE_URL}/send-message/{session_id}",
                 json={"content": message, "userid": LOGGED_IN_USER},
             )
-
             print(response.json())
+        except Exception as e:
+            print(e)
+
+
+def fetch_messages():
+    while True:
+        try:
+            response = http.get(f"{BASE_URL}/get-all-messages/888")
+            messages = response.json()
+            # clear the screen
+            print("\033[H\033[J")
+
+            for message in messages:
+                print(f"{message.get('userid', '')}: {message.get('content', '')}")
+            sleep(3)
         except Exception as e:
             print(e)
 
@@ -132,4 +146,5 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    threading.Thread(target=asyncio.run, args=(main(),)).start()
+    # create a new thread to run fetch_messages
