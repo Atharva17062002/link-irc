@@ -61,6 +61,7 @@ async def send_message(session_id: int, message: Message):
     session.messages.append(message)
     # Save the updated session back to the database
     sessions_db.update_one({"sessionid": session_id}, {"$set": session.dict()})
+    # delete_old_messages()
     return {"message": "Message sent successfully"}
 
 
@@ -68,6 +69,13 @@ async def send_message(session_id: int, message: Message):
 async def get_all_messages(session_id: int):
     session = get_session(session_id)
     return session.messages
+
+
+# get only last 20 messages from the session
+@app.get("/get-last-messages/{session_id}")
+async def get_last_messages(session_id: int):
+    session = get_session(session_id)
+    return session.messages[-20:]
 
 
 @app.post("/auth-session/{session_id}/{user_id}")
@@ -80,22 +88,4 @@ async def auth_session(session_id: int, user_id: str):
         raise HTTPException(status_code=401, detail="User not authenticated")
 
 
-# @app.websocket("/ws")
-# async def websocket_endpoint(websocket: WebSocket):
-#     try:
-#         await websocket.accept()
-#         client_id = generate_client_id()
-
-#         clients[client_id] = websocket
-#         print(f"Client with ID {client_id} connected")
-#         while True:
-#             data = await websocket.receive_text()
-#             response = f"Message text was: {data}"
-#             print(response)
-#             await websocket.send_text(response)
-
-#     except Exception as e:
-#         print(e)
-#         await websocket.close()
-#         print("Connection closed")
-#         del clients[client_id]
+# get the clients connected to the server

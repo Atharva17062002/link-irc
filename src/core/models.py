@@ -23,6 +23,7 @@ messages_db = db["messages"]
 class Message(BaseModel):
     content: str
     userid: str
+    # timestamp: datetime = datetime.now()
 
 
 class Session(BaseModel):

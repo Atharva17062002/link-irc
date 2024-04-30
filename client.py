@@ -1,11 +1,17 @@
 import asyncio
 import requests as http
 import json
-import threading
+import threading, os
 from time import sleep
+import logging
 
-BASE_URL = "http://localhost:8000"
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
+BASE_URL = "https://foxhound-premium-antelope.ngrok-free.app"
 LOGGED_IN_USER = None
+USERNAME = None
 
 
 async def main_menu():
@@ -60,8 +66,12 @@ async def login():
             json={"username": username, "password": password},
         )
         data = json.loads(response.json())
+        print(data)
         LOGGED_IN_USER = data.get("_id", {}).get("$oid", None)
-        print(f"Logged in as {LOGGED_IN_USER}")
+        # print(f"Logged in as {LOGGED_IN_USER}")
+        global USERNAME
+        USERNAME = data.get("username", None)
+        print(f"Logged in as {USERNAME} with id: {LOGGED_IN_USER}")
         await session_menu()  # Go to session menu
     except Exception as e:
         print(e)
@@ -118,7 +128,7 @@ async def send_message(session_id):
         try:
             response = http.post(
                 f"{BASE_URL}/send-message/{session_id}",
-                json={"content": message, "userid": LOGGED_IN_USER},
+                json={"content": message, "userid": str(USERNAME)},
             )
             print(response.json())
         except Exception as e:
@@ -128,14 +138,13 @@ async def send_message(session_id):
 def fetch_messages():
     while True:
         try:
-            response = http.get(f"{BASE_URL}/get-all-messages/888")
+            response = http.get(f"{BASE_URL}/get-last-messages/888")
             messages = response.json()
             # clear the screen
             print("\033[H\033[J")
-
             for message in messages:
-                print(f"{message.get('userid', '')}: {message.get('content', '')}")
-            sleep(3)
+                print(f"{message.get('userid', '')}> / {message.get('content', '')}")
+            sleep(5)
         except Exception as e:
             print(e)
 
