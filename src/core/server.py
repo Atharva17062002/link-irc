@@ -1,120 +1,148 @@
-from core import create_app
-from bson import json_util, ObjectId
-from fastapi import HTTPException, WebSocket
-from fastapi.responses import JSONResponse
-from ddtrace import patch
+import asyncio
+import requests as http
+import json
 
-from core.utils import generate_client_id, RedisManager
-from core.models import Session, User, sessions_db, users_db, messages_db, Message
-
-patch(fastapi=True)
-app = create_app()
-clients = {}
+# Constants
+BASE_URL = "http://localhost:8000"
+LOGGED_IN_USER = None
 
 
-@app.post("/auth-user")
-async def auth_user(user: User):
-    user_dict = dict(user)
-    cursor = users_db.find_one(user_dict)
-    print(cursor)
-    if cursor is None:
-        raise HTTPException(status_code=404, detail="User not found")
-    return json_util.dumps(cursor)
-
-
-@app.post("/create-user")
-async def create_user(user: User):
-    user_dict = dict(user)
-    cursor = users_db.find_one({"username": user_dict["username"]})
-    if cursor is not None:
-        raise HTTPException(status_code=400, detail="User already exists")
-    users_db.insert_one(user_dict)
-    return JSONResponse(content=user_dict, media_type="application/json")
-
-
-@app.post("/create-session")
-async def create_session(session: Session):
-    session_dict = dict(session)
-    # only create session if it does not exist
-    cursor = sessions_db.find_one(session_dict)
-    if cursor is not None:
-        raise HTTPException(status_code=400, detail="Session already exists")
-    RedisManager.save("session", session.sessionid, json_util.dumps(session_dict))
-    sessions_db.insert_one(session_dict)
-    return json_util.dumps(session_dict)
-
-def get_session(session_id: int):
-    # Attempt to retrieve the session from Redis
-    session_json = RedisManager.get("session", session_id)
-    if session_json:
-        # Session found in Redis, deserialize JSON and return as a Session instance
-        return Session(**json_util.loads(session_json))
-    else:
-        # Session not found in Redis, fetch from the database
-        session = sessions_db.find_one({"sessionid": session_id})
-        if session:
-            # Cache the session in Redis for future requests
-            RedisManager.save("session", session_id, json_util.dumps(session))
-            # Convert the retrieved session dictionary to a Session instance
-            return Session(**session)
+async def main_menu():
+    while True:
+        print(">>>>>>>>>>>>>>Link IRC<<<<<<<<<<<<<<")
+        print("1. Login")
+        print("2. Register")
+        choice = input("Enter your choice: ")
+        if choice == "1":
+            await login()
+        elif choice == "2":
+            await register()
         else:
-            raise HTTPException(status_code=404, detail="Session not found")
+            print("Invalid choice")
 
 
-
-@app.post("/send-message/{session_id}")
-async def send_message(session_id: int, message: Message):
-    session = get_session(session_id)
-    session.messages.append(message)
-    # Save the updated session back to the database
-    RedisManager.save("session", session_id, json_util.dumps(session.dict()))
-    sessions_db.update_one({"sessionid": session_id}, {"$set": session.dict()})
-    return {"message": "Message sent successfully"}
-
-
-
-@app.get("/get-all-messages/{session_id}")
-async def get_all_messages(session_id: int):
-    session = get_session(session_id)
-    return session.messages
-
-
-@app.post("/auth-session")
-async def auth_session(session: Session):
-    session_dict = dict(session)
-    # Attempt to retrieve the session from Redis
-    session_json = RedisManager.get("session", session_dict["sessionid"])
-    if session_json:
-        # Session found in Redis, return it
-        return json_util.loads(session_json)
-    else:
-        # Session not found in Redis, fetch from the database
-        cursor = sessions_db.find_one(session_dict)
-        if cursor:
-            # Cache the session in Redis for future requests
-            RedisManager.save("session", session_dict["sessionid"], json_util.dumps(cursor))
-            return cursor
+async def session_menu():
+    while True:
+        print("1. Create session")
+        print("2. Join session")
+        choice = input("Enter your choice: ")
+        if choice == "1":
+            await create_session()
+        elif choice == "2":
+            await join_session()
         else:
-            raise HTTPException(status_code=404, detail="Session not found")
+            print("Invalid choice")
 
 
+async def register():
+    username = input("Enter username: ")
+    password = input("Enter password: ")
+    try:
+        response = http.post(
+            f"{BASE_URL}/create-user",
+            json={"username": username, "password": password},
+        )
+        print(response.json())
+        await main_menu()  # Go back to main menu
+    except Exception as e:
+        print(e)
 
-# @app.websocket("/ws")
-# async def websocket_endpoint(websocket: WebSocket):
-#     try:
-#         await websocket.accept()
-#         client_id = generate_client_id()
 
-#         clients[client_id] = websocket
-#         print(f"Client with ID {client_id} connected")
-#         while True:
-#             data = await websocket.receive_text()
-#             response = f"Message text was: {data}"
-#             print(response)
-#             await websocket.send_text(response)
+async def login():
+    global LOGGED_IN_USER
+    username = input("User: ")
+    password = input("Pass: ")
 
-#     except Exception as e:
-#         print(e)
-#         await websocket.close()
-#         print("Connection closed")
-#         del clients[client_id]
+    try:
+        response = http.post(
+            f"{BASE_URL}/auth-user",
+            json={"username": username, "password": password},
+        )
+        data = json.loads(response.json())
+        LOGGED_IN_USER = data.get("_id", {}).get("$oid", None)
+        print(f"Logged in as {LOGGED_IN_USER}")
+        await session_menu()  # Go to session menu
+    except Exception as e:
+        print(e)
+
+
+async def join_session():
+    if not LOGGED_IN_USER:
+        print("You must log in first")
+        return
+    session_id = input("Enter session id: ")
+    try:
+        response = http.post(
+            f"{BASE_URL}/auth-session/{session_id}/{LOGGED_IN_USER}",
+            json={"userid": LOGGED_IN_USER},
+        )
+        print(response.json())
+        await send_message(session_id)  # Go to send message
+    except Exception as e:
+        print(e)
+
+
+async def create_session():
+    if not LOGGED_IN_USER:
+        print("You must log in first")
+        return
+    try:
+        session_id = input("Enter session id: ")
+        response = http.post(
+            f"{BASE_URL}/create-session",
+            json={
+                "sessionid": session_id,
+                "adminid": LOGGED_IN_USER,
+                "memberid": LOGGED_IN_USER,
+            },
+        )
+
+        data = json.loads(response.json())
+        session_id = data.get("sessionid", None)
+        print(f"Session created with id: {session_id}")
+        await send_message(session_id)  # Go to send message
+    except Exception as e:
+        print(e)
+
+
+async def send_message(session_id):
+    while True:
+        response = http.get(f"{BASE_URL}/get-all-messages/{session_id}")
+        data = response.json()
+        for message in data:
+            content = message.get("content")
+            userid = message.get("userid")
+            print(f"{userid}: {content}")
+
+        # Wait for 1 second before fetching new messages
+        await asyncio.sleep(1)
+
+        # Clear the terminal screen (optional)
+        print("\033[H\033[J", end="")  # Clear screen
+
+        # Fetch new messages
+        response = http.get(f"{BASE_URL}/get-all-messages/{session_id}")
+        data = response.json()
+        for message in data:
+            content = message.get("content")
+            userid = message.get("userid")
+            print(f"{userid}: {content}")
+
+        # Handle user input (send a new message)
+        message = input("Enter message: ")
+        try:
+            response = http.post(
+                f"{BASE_URL}/send-message/{session_id}",
+                json={"content": message, "userid": LOGGED_IN_USER},
+            )
+            print(response.json())
+        except Exception as e:
+            print(e)
+
+
+async def main():
+    await main_menu()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

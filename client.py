@@ -1,11 +1,12 @@
 import asyncio
 import requests as http
 import json
+import threading
+from time import sleep
 
 # Constants
-BASE_URL = "https://e46e-103-183-44-61.ngrok-free.app"
+BASE_URL = "https://f0e0-103-183-44-61.ngrok-free.app"
 LOGGED_IN_USER = None
-LAST_MESSAGE = None
 
 
 async def main_menu():
@@ -51,15 +52,15 @@ async def register():
 
 async def login():
     global LOGGED_IN_USER
-    username = input("Enter Username")
-    password = input("Enter Password")
+    username = input("Enter username: ")
+    password = input("Enter password: ")
 
     try:
         response = http.post(
             f"{BASE_URL}/auth-user",
             json={"username": username, "password": password},
         )
-        data = json.loads(response.json())
+        data = response.json()
         LOGGED_IN_USER = data.get("_id", {}).get("$oid", None)
         print(f"Logged in as {LOGGED_IN_USER}")
         await session_menu()  # Go to session menu
@@ -78,7 +79,7 @@ async def join_session():
             json={"userid": LOGGED_IN_USER},
         )
         print(response.json())
-        await get_all_messages(session_id)  # Go to send message
+        await send_message(session_id)  # Go to send message
     except Exception as e:
         print(e)
 
@@ -98,34 +99,47 @@ async def create_session():
             },
         )
 
-        data = json.loads(response.json())
+        data = response.json()
         session_id = data.get("sessionid", None)
         print(f"Session created with id: {session_id}")
+        # run the fetch_messages coroutine in the background
+        asyncio.create_task(fetch_messages(session_id))
         await send_message(session_id)  # Go to send message
+
     except Exception as e:
         print(e)
 
-async def get_all_messages(session_id):
-    response = http.get(f"{BASE_URL}/get-all-messages/{session_id}")
-    data = response.json()
-    for message in data:
-        content = message.get("content")
-        userid = message.get("userid")
-        print(f"{userid}: {content}")
-    try:
-        await send_message(session_id)
-    except Exception as e:
-        print(e)
-    
 
 async def send_message(session_id):
+    threading.Thread(target=fetch_messages).start()
+
     while True:
+        # Handle user input (send a new message)
+        message = input("Enter message: ")
         try:
             response = http.post(
                 f"{BASE_URL}/send-message/{session_id}",
                 json={"content": message, "userid": LOGGED_IN_USER},
             )
-            print(f'{LOGGED_IN_USER} : {message}' )
+            print(response.json())
+        except Exception as e:
+            print(e)
+
+
+def fetch_messages(session_id):
+    while True:
+        try:
+            response = http.get(f"{BASE_URL}/get-all-messages/{session_id}")
+            if response.status_code == 200:
+                messages = response.json()
+                # clear the screen
+                print("\033[H\033[J")
+
+                for message in messages:
+                    print(f"{message.get('userid', '')}: {message.get('content', '')}")
+            else:
+                print("Failed to fetch messages:", response.text)
+            sleep(3)
         except Exception as e:
             print(e)
 
@@ -135,4 +149,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    threading.Thread(target=asyncio.run, args=(main(),)).start()
